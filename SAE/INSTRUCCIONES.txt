@@ -1,0 +1,38 @@
+════════════════════════════════════════════════════════
+  SAE — Sistema de Análisis Económico
+  Ingeniería de Negocios INE135 | UES
+════════════════════════════════════════════════════════
+
+REQUISITOS:
+  - Python 3.8 o superior instalado
+  - Conexión a internet (primera vez)
+
+INSTALACIÓN (solo la primera vez):
+  1. Abre la terminal/cmd en la carpeta SAE
+  2. Ejecuta: pip install flask reportlab
+
+EJECUTAR EL SISTEMA:
+  1. Abre la terminal/cmd en la carpeta SAE
+  2. Ejecuta: python app.py
+  3. Abre tu navegador y ve a: http://localhost:5000
+
+USAR EL SISTEMA:
+  1. Selecciona el método (VPN, CAE o TIR)
+  2. Ingresa los datos de las dos alternativas
+  3. Elige si el sistema calcula los flujos
+     o si prefieres ingresarlos manualmente
+  4. Clic en "Calcular y Comparar"
+  5. Descarga el reporte PDF con "Exportar Reporte PDF"
+
+MÉTODOS IMPLEMENTADOS:
+  • VPN: Valor Presente Neto
+    - Acepta si VPN ≥ 0
+    - Se elige la alternativa con mayor VPN
+  • CAE: Costo Anual Equivalente (Valor Anual)
+    - Fórmulas: RC = I(A/P,i%,N) - S(A/F,i%,N)
+    - VA = R - E - RC
+  • TIR: Tasa Interna de Retorno
+    - Acepta si TIR ≥ TREMA
+    - Método de bisección numérica
+
+════════════════════════════════════════════════════════
