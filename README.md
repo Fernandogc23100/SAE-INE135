@@ -24,21 +24,27 @@ El sistema permite calcular indicadores financieros básicos como **VPN**, **CAE
 
 ## Estructura del proyecto
 
+```text
 SAE/
 ├── app.py
 ├── requirements.txt
 ├── INSTRUCCIONES.txt
 └── templates/
 └── index.html
+```
 
 ## Requisitos previos
 
 Antes de ejecutar el proyecto, asegúrate de tener instalado:
+
+```text
 Python 3.8 o superior
 pip
+```
 
 ## Instalación
 
+```text
 1. Clona este repositorio:
    https://github.com/Fernandogc23100/SAE-INE135.git
 
@@ -53,3 +59,4 @@ pip
 
 5. Luego abre tu navegador y entra a:
    http://localhost:5000
+```
