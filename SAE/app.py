@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -208,8 +209,18 @@ def calcular_tir(datos):
             'vp': round(fc * factor_PF(tir, t), 2) if tir else 0
         })
 
+    mensaje_tir = None
+
     tir_pct = round(tir * 100, 2) if tir is not None else None
     acepta = tir_pct is not None and tir_pct >= datos['trema']
+
+    mensaje_tir = None
+
+    if tir is None:
+        mensaje_tir = (
+            'No se pudo determinar la TIR para estos flujos. '
+            'Puede no existir una raíz en el rango evaluado o los flujos no presentan un cambio de signo adecuado.'
+        )
 
     return {
         'tir': tir_pct,
@@ -217,7 +228,8 @@ def calcular_tir(datos):
         'flujos': flujos_detalle,
         'decision': 'ACEPTAR ✓' if acepta else 'RECHAZAR ✗',
         'color_decision': 'verde' if acepta else 'rojo',
-        'sin_tir': tir is None
+        'sin_tir': tir is None,
+        'mensaje': mensaje_tir
     }
 
 # ─── GENERACIÓN DE PDF ───────────────────────────────────────────────────────
@@ -269,6 +281,7 @@ def generar_pdf(datos_reporte):
     story.append(Paragraph(f"Sistema de Análisis Económico — SAE", estilos['seccion']))
     story.append(Paragraph(f"Método: {metodo}", estilos['normal']))
     story.append(Paragraph(f"Asignatura: Ingeniería de Negocios — INE135", estilos['normal']))
+    story.append(Paragraph(f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}", estilos['normal']))
     story.append(HRFlowable(width="100%", thickness=1, color=UES_GRIS))
     story.append(Spacer(1, 10))
 
@@ -326,7 +339,10 @@ def generar_pdf(datos_reporte):
     ]))
     story.append(tabla_res)
     story.append(Spacer(1, 6))
-    story.append(Paragraph(f"✔ Alternativa Recomendada: {ganador}", estilos['decision_verde']))
+    if ganador == "Ninguna" or ganador == "Ninguna alternativa recomendable":
+        story.append(Paragraph("Conclusión: Ninguna alternativa es recomendable según el método seleccionado.", estilos['decision_rojo']))
+    else:
+        story.append(Paragraph(f"✔ Alternativa Recomendada: {ganador}", estilos['decision_verde']))
     story.append(HRFlowable(width="100%", thickness=1, color=UES_GRIS))
 
     # ── Detalle por alternativa ──
@@ -407,6 +423,109 @@ def generar_pdf(datos_reporte):
     buffer.seek(0)
     return buffer
 
+def validar_alternativa(alt, nombre_alt):
+    """
+    Valida los datos mínimos de una alternativa antes de calcular.
+    """
+    errores = []
+
+    if not alt:
+        return [f"No se recibieron datos para {nombre_alt}."]
+
+    inversion = alt.get('inversion')
+    tasa = alt.get('tasa')
+    vida = alt.get('vida')
+    modo = alt.get('modo')
+
+    if inversion is None or inversion < 0:
+        errores.append(f"{nombre_alt}: la inversión inicial es obligatoria y no puede ser negativa.")
+
+    if tasa is None or tasa < 0:
+        errores.append(f"{nombre_alt}: la tasa/TREMA es obligatoria y no puede ser negativa.")
+
+    if vida is None or int(vida) <= 0:
+        errores.append(f"{nombre_alt}: la vida del proyecto debe ser mayor que cero.")
+
+    if modo not in ['uniforme', 'manual']:
+        errores.append(f"{nombre_alt}: el modo de flujos no es válido.")
+
+    if modo == 'manual':
+        flujos = alt.get('flujos', [])
+
+        if not isinstance(flujos, list) or len(flujos) == 0:
+            errores.append(f"{nombre_alt}: debe ingresar los flujos manuales.")
+        elif vida and len(flujos) != int(vida):
+            errores.append(
+                f"{nombre_alt}: la cantidad de flujos manuales debe coincidir con la vida del proyecto."
+            )
+
+    return errores
+
+
+def obtener_ganador(metodo, alt_a, alt_b, res_a, res_b):
+    """
+    Determina la alternativa recomendada sin elegir proyectos rechazados.
+    """
+    nombre_a = alt_a.get('nombre', 'Alternativa A')
+    nombre_b = alt_b.get('nombre', 'Alternativa B')
+
+    if metodo == 'VPN':
+        val_a = res_a['vpn']
+        val_b = res_b['vpn']
+        aceptada_a = val_a >= 0
+        aceptada_b = val_b >= 0
+
+    elif metodo == 'CAE':
+        val_a = res_a['cae']
+        val_b = res_b['cae']
+        aceptada_a = val_a >= 0
+        aceptada_b = val_b >= 0
+
+    else:
+        val_a = res_a.get('tir')
+        val_b = res_b.get('tir')
+        trema_a = alt_a.get('trema', alt_a.get('tasa', 0))
+        trema_b = alt_b.get('trema', alt_b.get('tasa', 0))
+
+        aceptada_a = val_a is not None and val_a >= trema_a
+        aceptada_b = val_b is not None and val_b >= trema_b
+
+    if not aceptada_a and not aceptada_b:
+        return {
+            'ganador': 'Ninguna alternativa recomendable',
+            'mensaje': 'Ambas alternativas fueron rechazadas según el criterio del método seleccionado.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    if aceptada_a and not aceptada_b:
+        return {
+            'ganador': nombre_a,
+            'mensaje': f'Solo {nombre_a} cumple con el criterio de aceptación.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    if aceptada_b and not aceptada_a:
+        return {
+            'ganador': nombre_b,
+            'mensaje': f'Solo {nombre_b} cumple con el criterio de aceptación.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    if val_a >= val_b:
+        ganador = nombre_a
+    else:
+        ganador = nombre_b
+
+    return {
+        'ganador': ganador,
+        'mensaje': 'Ambas alternativas son aceptables; se recomienda la de mejor resultado económico.',
+        'val_a': val_a,
+        'val_b': val_b
+    }
+
 # ─── RUTAS FLASK ─────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -415,48 +534,75 @@ def index():
 
 @app.route('/calcular', methods=['POST'])
 def calcular():
-    datos = request.get_json()
-    metodo = datos['metodo']
-    alt_a = datos['alternativa_a']
-    alt_b = datos['alternativa_b']
+    try:
+        datos = request.get_json()
 
-    if metodo == 'VPN':
-        res_a = calcular_vpn(alt_a)
-        res_b = calcular_vpn(alt_b)
-    elif metodo == 'CAE':
-        res_a = calcular_cae(alt_a)
-        res_b = calcular_cae(alt_b)
-    else:
-        res_a = calcular_tir(alt_a)
-        res_b = calcular_tir(alt_b)
+        if not datos:
+            return jsonify({'error': 'No se recibieron datos para calcular.'}), 400
 
-    # Determinar ganador
-    if metodo == 'VPN':
-        ganador = alt_a.get('nombre', 'A') if res_a['vpn'] >= res_b['vpn'] else alt_b.get('nombre', 'B')
-        val_a, val_b = res_a['vpn'], res_b['vpn']
-    elif metodo == 'CAE':
-        ganador = alt_a.get('nombre', 'A') if res_a['cae'] >= res_b['cae'] else alt_b.get('nombre', 'B')
-        val_a, val_b = res_a['cae'], res_b['cae']
-    else:
-        ta, tb = res_a.get('tir') or -999, res_b.get('tir') or -999
-        ganador = alt_a.get('nombre', 'A') if ta >= tb else alt_b.get('nombre', 'B')
-        val_a, val_b = ta, tb
+        metodo = datos.get('metodo')
+        alt_a = datos.get('alternativa_a')
+        alt_b = datos.get('alternativa_b')
 
-    return jsonify({
-        'resultado_a': res_a,
-        'resultado_b': res_b,
-        'ganador': ganador,
-        'val_a': val_a,
-        'val_b': val_b
-    })
+        if metodo not in ['VPN', 'CAE', 'TIR']:
+            return jsonify({'error': 'El método seleccionado no es válido.'}), 400
+
+        errores = []
+        errores.extend(validar_alternativa(alt_a, 'Alternativa A'))
+        errores.extend(validar_alternativa(alt_b, 'Alternativa B'))
+
+        if errores:
+            return jsonify({'error': 'Datos inválidos.', 'detalles': errores}), 400
+
+        if metodo == 'VPN':
+            res_a = calcular_vpn(alt_a)
+            res_b = calcular_vpn(alt_b)
+        elif metodo == 'CAE':
+            res_a = calcular_cae(alt_a)
+            res_b = calcular_cae(alt_b)
+        else:
+            res_a = calcular_tir(alt_a)
+            res_b = calcular_tir(alt_b)
+
+        comparacion = obtener_ganador(metodo, alt_a, alt_b, res_a, res_b)
+
+        return jsonify({
+            'resultado_a': res_a,
+            'resultado_b': res_b,
+            'ganador': comparacion['ganador'],
+            'mensaje': comparacion['mensaje'],
+            'val_a': comparacion['val_a'],
+            'val_b': comparacion['val_b']
+        })
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Ocurrió un error interno al calcular.',
+            'detalles': str(e)
+        }), 500
 
 @app.route('/reporte', methods=['POST'])
 def reporte():
-    datos = request.get_json()
-    buffer = generar_pdf(datos)
-    return send_file(buffer, as_attachment=True,
-                     download_name='SAE_Reporte.pdf',
-                     mimetype='application/pdf')
+    try:
+        datos = request.get_json()
+
+        if not datos:
+            return jsonify({'error': 'No se recibieron datos para generar el reporte.'}), 400
+
+        buffer = generar_pdf(datos)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name='SAE_Reporte.pdf',
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Ocurrió un error al generar el reporte.',
+            'detalles': str(e)
+        }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
