@@ -10,7 +10,11 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 import json
 from datetime import datetime
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    static_folder='static',
+    static_url_path='/static'
+)
 
 # ─── FACTORES DE INTERÉS COMPUESTO ───────────────────────────────────────────
 
