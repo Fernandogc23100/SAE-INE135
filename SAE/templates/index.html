@@ -19,12 +19,19 @@
     <!-- HEADER -->
     <header>
       <div class="header-inner">
-        <div class="escudo">🏛️</div>
-        <div class="header-text">
-          <h1>SAE — Sistema de Análisis Económico</h1>
-          <p>Universidad de El Salvador · Ingeniería de Negocios INE135</p>
+        <div class="header-brand">
+          <div class="escudo">
+            <img
+              src="{{ url_for('static', filename='img/logo.png') }}"
+              alt="Logo SAE"
+            />
+          </div>
+
+          <div class="header-text">
+            <h1>SAE — Sistema de Análisis Económico</h1>
+            <p>Universidad de El Salvador · Ingeniería de Negocios INE135</p>
+          </div>
         </div>
-        <div class="header-badge">VPN · CAE · TIR</div>
       </div>
     </header>
 
@@ -36,17 +43,17 @@
           class="metodo-card activo"
           onclick="seleccionarMetodo('VPN', this)"
         >
-          <div class="icono">📊</div>
+          <div class="icono"></div>
           <h3>VPN</h3>
           <p>Valor Presente Neto — Descuenta flujos futuros al presente</p>
         </div>
         <div class="metodo-card" onclick="seleccionarMetodo('CAE', this)">
-          <div class="icono">📅</div>
+          <div class="icono"></div>
           <h3>CAE</h3>
           <p>Costo Anual Equivalente — Convierte a serie anual uniforme</p>
         </div>
         <div class="metodo-card" onclick="seleccionarMetodo('TIR', this)">
-          <div class="icono">📈</div>
+          <div class="icono"></div>
           <h3>TIR</h3>
           <p>Tasa Interna de Retorno — Tasa que hace VPN = 0</p>
         </div>
@@ -127,10 +134,10 @@
                 class="modo-btn activo"
                 onclick="setModo('a', 'uniforme', this)"
               >
-                📐 El sistema calcula
+                El sistema calcula
               </button>
               <button class="modo-btn" onclick="setModo('a', 'manual', this)">
-                ✏️ Ingreso manual
+                Ingreso manual
               </button>
             </div>
 
@@ -235,10 +242,10 @@
                 class="modo-btn activo"
                 onclick="setModo('b', 'uniforme', this)"
               >
-                📐 El sistema calcula
+                El sistema calcula
               </button>
               <button class="modo-btn" onclick="setModo('b', 'manual', this)">
-                ✏️ Ingreso manual
+                Ingreso manual
               </button>
             </div>
 
@@ -275,15 +282,15 @@
       <!-- BOTÓN CALCULAR -->
       <div class="btns-row">
         <button class="btn-calcular" onclick="cargarEjemplo()" id="btnEjemplo">
-          🧪 &nbsp;Cargar ejemplo
+          &nbsp;Cargar ejemplo
         </button>
 
         <button class="btn-calcular" onclick="limpiarDatos()" id="btnLimpiar">
-          🧹 &nbsp;Limpiar datos
+          &nbsp;Limpiar datos
         </button>
 
         <button class="btn-calcular" onclick="calcular()" id="btnCalc">
-          ⚙️ &nbsp;Calcular y Comparar
+          &nbsp;Calcular y Comparar
         </button>
       </div>
 

@@ -1,18 +1,18 @@
-:root {
-        --ues-rojo: #8b1a1a;
-        --ues-rojo-claro: #a52020;
-        --ues-rojo-oscuro: #6b1010;
-        --ues-gris: #2c2c2c;
-        --ues-gris-medio: #555;
-        --ues-borde: #e8dada;
-        --ues-fondo: #fbf7f7;
-        --blanco: #ffffff;
-        --verde: #1a6b1a;
-        --verde-claro: #e8f5e8;
-        --rojo-claro: #f5e8e8;
-        --sombra: 0 4px 20px rgba(139, 26, 26, 0.12);
-        --sombra-hover: 0 8px 30px rgba(139, 26, 26, 0.2);
-      }
+    :root {
+  --ues-rojo: #071a44;
+  --ues-rojo-claro: #0b2a66;
+  --ues-rojo-oscuro: #04102b;
+  --ues-gris: #2c2c2c;
+  --ues-gris-medio: #555;
+  --ues-borde: #d9e1f2;
+  --ues-fondo: #f6f8fc;
+  --blanco: #ffffff;
+  --verde: #1a6b1a;
+  --verde-claro: #e8f5e8;
+  --rojo-claro: #e8eef8;
+  --sombra: 0 4px 20px rgba(7, 26, 68, 0.12);
+  --sombra-hover: 0 8px 30px rgba(7, 26, 68, 0.2);
+}
 
       * {
         box-sizing: border-box;
@@ -52,30 +52,46 @@
         pointer-events: none;
       }
       .header-inner {
-        max-width: 1100px;
-        margin: 0 auto;
+        width: 100%;
+        max-width: none;
+        margin: 0;
         padding: 24px 32px;
         display: flex;
         align-items: center;
+        justify-content: center;
+      }
+      .header-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         gap: 20px;
       }
+      .header-inner .escudo {
+        margin-right: 20px;
+      }
       .escudo {
-        width: 60px;
-        height: 60px;
+        width: 90px;
+        height: 90px;
         background: rgba(255, 255, 255, 0.15);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 28px;
         flex-shrink: 0;
         border: 2px solid rgba(255, 255, 255, 0.3);
+        overflow: hidden;
+      }
+      .escudo img {
+        width: 82%;
+        height: 82%;
+        object-fit: contain;
       }
       .header-text h1 {
         font-family: "Playfair Display", serif;
         font-size: 26px;
         color: white;
         letter-spacing: 0.5px;
+        text-align: center;
       }
       .header-text p {
         font-size: 13px;
@@ -83,7 +99,8 @@
         margin-top: 3px;
       }
       .header-badge {
-        margin-left: auto;
+        position: absolute;
+        right: 32px;
         background: rgba(255, 255, 255, 0.15);
         border: 1px solid rgba(255, 255, 255, 0.3);
         color: white;
@@ -160,9 +177,9 @@
       }
       .metodo-card h3 {
         font-family: "Playfair Display", serif;
-        font-size: 16px;
+        font-size: 25px;
         color: var(--ues-rojo);
-        margin-bottom: 6px;
+        margin-bottom: 10px;
       }
       .metodo-card p {
         font-size: 12px;
@@ -193,6 +210,7 @@
         padding: 14px 20px;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 10px;
       }
       .alt-header h3 {
