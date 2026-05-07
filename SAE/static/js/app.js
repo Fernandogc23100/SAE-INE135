@@ -281,11 +281,14 @@
                           document.getElementById('ganadorSub').textContent = data.mensaje || subTexto;
 
                           // Tarjetas
-                          renderResCard("A", altA, data.resultado_a);
-                          renderResCard("B", altB, data.resultado_b);
+                          const esMejorA = data.ganador === altA.nombre;
+                          const esMejorB = data.ganador === altB.nombre;
+
+                          renderResCard("A", altA, data.resultado_a, esMejorA);
+                          renderResCard("B", altB, data.resultado_b, esMejorB);
                         }
 
-                        function renderResCard(letra, altDatos, res) {
+                        function renderResCard(letra, altDatos, res, esMejorAlternativa = false) {
                           const header = document.getElementById(`resHeader${letra}`);
                           const body = document.getElementById(`resBody${letra}`);
                           header.textContent = altDatos.nombre || `Alternativa ${letra}`;
@@ -293,9 +296,13 @@
                           const esVerde = res.color_decision === "verde";
                           let html = "";
 
+                          const textoDecision = esMejorAlternativa
+                            ? `${res.decision} · MEJOR OPCIÓN`
+                            : res.decision;     
+
                           if (metodoActual === "VPN") {
                             html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.vpn)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${res.decision}</span>`;
+                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
                             if (res.flujos && res.flujos.length) {
                               html += `<table class="tabla-flujos">
                           <thead><tr><th>Período</th><th>Flujo Neto</th><th>Factor P/F</th><th>VP</th></tr></thead>
@@ -308,7 +315,7 @@
                             }
                           } else if (metodoActual === "CAE") {
                             html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.cae)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${res.decision}</span>`;
+                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
                             html += `<div class="detalle-row"><span class="label">Factor A/P</span><span class="valor">${res.ap}</span></div>`;
                             html += `<div class="detalle-row"><span class="label">Factor A/F</span><span class="valor">${res.af}</span></div>`;
                             html += `<div class="detalle-row"><span class="label">Recuperación de Capital (RC)</span><span class="valor">${fmt(res.rc)}</span></div>`;
@@ -316,7 +323,7 @@
                           } else {
                             // TIR
                             html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmtPct(res.tir)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${res.decision}</span>`;
+                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
                             html += `<div class="detalle-row"><span class="label">TIR Calculada</span><span class="valor">${fmtPct(res.tir)}</span></div>`;
                             html += `<div class="detalle-row"><span class="label">TREMA</span><span class="valor">${res.trema}%</span></div>`;
                             if (res.mensaje) {
