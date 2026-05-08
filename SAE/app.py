@@ -593,7 +593,45 @@ def reporte():
         if not datos:
             return jsonify({'error': 'No se recibieron datos para generar el reporte.'}), 400
 
-        buffer = generar_pdf(datos)
+        metodo = datos.get('metodo')
+        alt_a = datos.get('alternativa_a')
+        alt_b = datos.get('alternativa_b')
+
+        if metodo not in ['VPN', 'CAE', 'TIR']:
+            return jsonify({'error': 'El método seleccionado no es válido.'}), 400
+
+        errores = []
+        errores.extend(validar_alternativa(alt_a, 'Alternativa A'))
+        errores.extend(validar_alternativa(alt_b, 'Alternativa B'))
+
+        if errores:
+            return jsonify({'error': 'Datos inválidos.', 'detalles': errores}), 400
+
+        if metodo == 'VPN':
+            res_a = calcular_vpn(alt_a)
+            res_b = calcular_vpn(alt_b)
+        elif metodo == 'CAE':
+            res_a = calcular_cae(alt_a)
+            res_b = calcular_cae(alt_b)
+        else:
+            res_a = calcular_tir(alt_a)
+            res_b = calcular_tir(alt_b)
+
+        datos_reporte = {
+            'metodo': metodo,
+            'alternativa_a': {
+                'nombre': alt_a.get('nombre', 'Alternativa A'),
+                'parametros': alt_a,
+                'resultado': res_a
+            },
+            'alternativa_b': {
+                'nombre': alt_b.get('nombre', 'Alternativa B'),
+                'parametros': alt_b,
+                'resultado': res_b
+            }
+        }
+
+        buffer = generar_pdf(datos_reporte)
 
         return send_file(
             buffer,
