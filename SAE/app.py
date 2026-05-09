@@ -50,76 +50,161 @@ def factor_AP(i, n):
         return 1 / n
     return (i * (1 + i) ** n) / ((1 + i) ** n - 1)
 
+def detectar_tipo_analisis(datos):
+    """
+    Detecta si la alternativa es:
+    - beneficio: tiene ingresos/ahorros.
+    - costos: solo tiene egresos/costos.
+    """
+    modo = datos.get('modo', 'uniforme')
+
+    if modo == 'uniforme':
+        ingresos = float(datos.get('ingresos', 0) or 0)
+        egresos = float(datos.get('egresos', 0) or 0)
+
+        if ingresos <= 0 and egresos > 0:
+            return 'costos'
+        return 'beneficio'
+
+    flujos = [float(x or 0) for x in datos.get('flujos', [])]
+
+    if flujos and all(fc <= 0 for fc in flujos):
+        return 'costos'
+
+    return 'beneficio'
+
+
+def construir_flujos_ciclo(datos):
+    """
+    Construye los flujos completos de una alternativa:
+    [año 0, año 1, año 2, ..., año N]
+
+    En modo manual, el salvamento se suma automáticamente al último año.
+    """
+    N = int(datos['vida'])
+    inversion = float(datos.get('inversion', 0) or 0)
+    salvamento = float(datos.get('salvamento', 0) or 0)
+    modo = datos.get('modo', 'uniforme')
+
+    if modo == 'uniforme':
+        ingresos = float(datos.get('ingresos', 0) or 0)
+        egresos = float(datos.get('egresos', 0) or 0)
+        flujo_neto = ingresos - egresos
+        flujos = [-inversion] + [flujo_neto] * N
+    else:
+        flujos_usuario = [float(x or 0) for x in datos.get('flujos', [])]
+        flujos = [-inversion] + flujos_usuario[:N]
+
+    if N > 0 and salvamento != 0:
+        flujos[N] += salvamento
+
+    return flujos
+
+
+def extender_flujos_a_periodo(datos, periodo_total):
+    """
+    Repite el ciclo de vida de una alternativa hasta un periodo común.
+    Sirve para comparar VPN cuando las alternativas tienen vidas diferentes.
+    """
+    N = int(datos['vida'])
+    ciclo = construir_flujos_ciclo(datos)
+    periodo_total = int(periodo_total)
+
+    if periodo_total <= N:
+        return ciclo
+
+    flujos = [0.0] * (periodo_total + 1)
+
+    for inicio in range(0, periodo_total, N):
+        flujos[inicio] += ciclo[0]
+
+        for t in range(1, N + 1):
+            if inicio + t <= periodo_total:
+                flujos[inicio + t] += ciclo[t]
+
+    return flujos
+
+
+def crear_detalle_vp(flujos, tasa):
+    detalle = []
+
+    for t, fc in enumerate(flujos):
+        if t == 0:
+            continue
+
+        factor = factor_PF(tasa, t)
+
+        detalle.append({
+            'periodo': t,
+            'flujo': round(fc, 2),
+            'factor_pf': round(factor, 6),
+            'vp': round(fc * factor, 2)
+        })
+
+    return detalle
+
 # ─── CÁLCULO VPN ─────────────────────────────────────────────────────────────
 
-def calcular_vpn(datos):
+def calcular_vpn(datos, periodo_comparacion=None):
     """
     Calcula el Valor Presente Neto.
-    Modo uniforme: ingresos y egresos anuales constantes.
-    Modo manual: flujos netos ingresados por período.
+
+    - Para proyectos con ingresos: acepta si VPN >= 0.
+    - Para alternativas solo de costos: recomienda el menor costo presente.
+    - Si se recibe periodo_comparacion, repite ciclos hasta ese periodo.
     """
     i = datos['tasa'] / 100
     N = int(datos['vida'])
-    P0 = datos['inversion']
-    modo = datos['modo']
+    tipo = detectar_tipo_analisis(datos)
 
-    flujos_detalle = []
+    periodo = int(periodo_comparacion) if periodo_comparacion else N
 
-    if modo == 'uniforme':
-        R = datos.get('ingresos', 0)
-        E = datos.get('egresos', 0)
-        S = datos.get('salvamento', 0)
-        FC_neto = R - E
+    if periodo_comparacion:
+        flujos = extender_flujos_a_periodo(datos, periodo)
+    else:
+        flujos = construir_flujos_ciclo(datos)
 
-        vpn = -P0
-        for t in range(1, N + 1):
-            vp_t = FC_neto * factor_PF(i, t)
-            vpn += vp_t
-            flujos_detalle.append({
-                'periodo': t,
-                'flujo': FC_neto if t < N else FC_neto + S,
-                'factor_pf': round(factor_PF(i, t), 6),
-                'vp': round(vp_t if t < N else (FC_neto + S) * factor_PF(i, t), 2)
-            })
-        # Ajustar el último período con salvamento
-        vp_s = S * factor_PF(i, N)
-        vpn += vp_s
-        flujos_detalle[-1]['flujo'] = FC_neto + S
-        flujos_detalle[-1]['vp'] = round((FC_neto + S) * factor_PF(i, N), 2)
+    vpn = sum(fc * factor_PF(i, t) for t, fc in enumerate(flujos))
+    flujos_detalle = crear_detalle_vp(flujos, i)
 
-    else:  # modo manual
-        flujos = datos['flujos']  # lista de flujos netos por período
-        vpn = -P0
-        for t, fc in enumerate(flujos, 1):
-            vp_t = fc * factor_PF(i, t)
-            vpn += vp_t
-            flujos_detalle.append({
-                'periodo': t,
-                'flujo': fc,
-                'factor_pf': round(factor_PF(i, t), 6),
-                'vp': round(vp_t, 2)
-            })
+    if tipo == 'costos':
+        decision = 'EVALUADA ✓'
+        color = 'verde'
+        criterio = 'Alternativa de solo costos: se recomienda el menor costo equivalente.'
+    else:
+        decision = 'ACEPTAR ✓' if vpn >= 0 else 'RECHAZAR ✗'
+        color = 'verde' if vpn >= 0 else 'rojo'
+        criterio = 'Proyecto con beneficios: se acepta si VPN ≥ 0.'
 
     return {
         'vpn': round(vpn, 2),
+        'costo_presente': round(-vpn, 2),
         'flujos': flujos_detalle,
-        'decision': 'ACEPTAR ✓' if vpn >= 0 else 'RECHAZAR ✗',
-        'color_decision': 'verde' if vpn >= 0 else 'rojo'
+        'decision': decision,
+        'color_decision': color,
+        'tipo_analisis': tipo,
+        'periodo_comparacion': periodo,
+        'criterio': criterio
     }
 
 # ─── CÁLCULO CAE ─────────────────────────────────────────────────────────────
 
 def calcular_cae(datos):
     """
-    Calcula el Costo Anual Equivalente (Valor Anual).
-    VA(i%) = R - E - RC(i%)
-    RC(i%) = I(A/P,i%,N) - S(A/F,i%,N)
+    Calcula el Valor Anual / Costo Anual Equivalente.
+
+    Con ingresos:
+        VA = R - E - RC
+
+    Con solo costos:
+        se recomienda el menor CAUE.
     """
     i = datos['tasa'] / 100
     N = int(datos['vida'])
-    I = datos['inversion']
-    S = datos.get('salvamento', 0)
+    I = float(datos['inversion'])
+    S = float(datos.get('salvamento', 0) or 0)
     modo = datos['modo']
+    tipo = detectar_tipo_analisis(datos)
 
     ap = factor_AP(i, N)
     af = factor_AF(i, N)
@@ -127,113 +212,187 @@ def calcular_cae(datos):
     RC = I * ap - S * af
 
     if modo == 'uniforme':
-        R = datos.get('ingresos', 0)
-        E = datos.get('egresos', 0)
+        R = float(datos.get('ingresos', 0) or 0)
+        E = float(datos.get('egresos', 0) or 0)
         VA = R - E - RC
     else:
-        # Con flujos manuales: convertir VP a VA
-        flujos = datos['flujos']
-        vp_total = -I
-        for t, fc in enumerate(flujos, 1):
-            vp_total += fc * factor_PF(i, t)
-        VA = vp_total * factor_AP(i, N)
+        flujos = construir_flujos_ciclo(datos)
+        vp_total = sum(fc * factor_PF(i, t) for t, fc in enumerate(flujos))
+        VA = vp_total * ap
+
+    if tipo == 'costos':
+        decision = 'EVALUADA ✓'
+        color = 'verde'
+        criterio = 'Alternativa de solo costos: se recomienda el menor CAUE.'
+    else:
+        decision = 'ACEPTAR ✓' if VA >= 0 else 'RECHAZAR ✗'
+        color = 'verde' if VA >= 0 else 'rojo'
+        criterio = 'Proyecto con beneficios: se acepta si VA ≥ 0.'
 
     return {
         'cae': round(VA, 2),
+        'caue_costo': round(-VA, 2),
         'rc': round(RC, 2),
         'ap': round(ap, 6),
         'af': round(af, 6),
-        'decision': 'ACEPTAR ✓' if VA >= 0 else 'RECHAZAR ✗',
-        'color_decision': 'verde' if VA >= 0 else 'rojo'
+        'decision': decision,
+        'color_decision': color,
+        'tipo_analisis': tipo,
+        'criterio': criterio
     }
+# ─── CÁLCULO TIR ─────────────────────────────────────────────────────────────
 
 # ─── CÁLCULO TIR ─────────────────────────────────────────────────────────────
 
 def calcular_vpn_para_tir(flujos_completos, tasa):
-    """Calcula VPN para una tasa dada (usado en bisección)"""
-    vpn = 0
-    for t, fc in enumerate(flujos_completos):
-        vpn += fc / (1 + tasa) ** t
-    return vpn
+    """Calcula el VPN de una serie de flujos para una tasa dada."""
+    return sum(fc / (1 + tasa) ** t for t, fc in enumerate(flujos_completos))
+
+
+def contar_cambios_signo(flujos):
+    """Cuenta cambios de signo ignorando ceros para advertir posibles TIR múltiples."""
+    signos = []
+
+    for fc in flujos:
+        if abs(fc) < 1e-12:
+            continue
+
+        signos.append(1 if fc > 0 else -1)
+
+    return sum(1 for a, b in zip(signos, signos[1:]) if a != b)
+
+
+def buscar_raices_tir(flujos_completos):
+    """
+    Busca raíces de VPN = 0 en el rango -99.99% a 1000%.
+    Esto permite detectar TIR negativas, positivas y posibles TIR múltiples.
+    """
+    tasas = [-0.9999]
+
+    # Rango negativo: -99% a 0%
+    tasas += [(-0.99 + k * (0.99 / 1200)) for k in range(1, 1201)]
+
+    # Rango positivo: 0% a 1000%
+    tasas += [(k * (10.0 / 4000)) for k in range(1, 4001)]
+
+    raices = []
+
+    prev_t = tasas[0]
+
+    try:
+        prev_v = calcular_vpn_para_tir(flujos_completos, prev_t)
+    except Exception:
+        prev_v = None
+
+    for t in tasas[1:]:
+        try:
+            v = calcular_vpn_para_tir(flujos_completos, t)
+        except Exception:
+            prev_t, prev_v = t, None
+            continue
+
+        if prev_v is not None:
+            if abs(v) < 1e-7:
+                raiz = t
+
+                if not any(abs(raiz - r) < 1e-5 for r in raices):
+                    raices.append(raiz)
+
+            elif prev_v * v < 0:
+                low, high = prev_t, t
+                f_low = prev_v
+
+                for _ in range(120):
+                    mid = (low + high) / 2
+                    f_mid = calcular_vpn_para_tir(flujos_completos, mid)
+
+                    if abs(f_mid) < 1e-10 or abs(high - low) < 1e-12:
+                        break
+
+                    if f_low * f_mid <= 0:
+                        high = mid
+                    else:
+                        low = mid
+                        f_low = f_mid
+
+                raiz = (low + high) / 2
+
+                if not any(abs(raiz - r) < 1e-5 for r in raices):
+                    raices.append(raiz)
+
+        prev_t, prev_v = t, v
+
+    return sorted(raices)
+
 
 def calcular_tir(datos):
     """
-    Calcula la Tasa Interna de Retorno usando método de bisección.
+    Calcula la TIR usando los mismos flujos que VPN y CAE.
+    Esto corrige el problema del modo manual, porque ahora sí suma el salvamento al último año.
     """
-    N = int(datos['vida'])
-    P0 = datos['inversion']
-    modo = datos['modo']
-    trema = datos['trema'] / 100
+    trema = float(datos.get('trema', datos.get('tasa', 0)) or 0)
 
-    # Construir flujos completos [período 0, 1, 2, ..., N]
-    if modo == 'uniforme':
-        R = datos.get('ingresos', 0)
-        E = datos.get('egresos', 0)
-        S = datos.get('salvamento', 0)
-        FC_neto = R - E
-        flujos_completos = [-P0] + [FC_neto] * (N - 1) + [FC_neto + S]
-    else:
-        flujos = datos['flujos']
-        flujos_completos = [-P0] + flujos
+    # Usa construir_flujos_ciclo(), así el salvamento se suma correctamente en modo manual.
+    flujos_completos = construir_flujos_ciclo(datos)
 
-    # Bisección para encontrar TIR
-    tir = None
-    try:
-        low, high = 0.0001, 9.999  # 0.01% a 999.9%
-        vpn_low = calcular_vpn_para_tir(flujos_completos, low)
-        vpn_high = calcular_vpn_para_tir(flujos_completos, high)
+    cambios_signo = contar_cambios_signo(flujos_completos)
+    raices = buscar_raices_tir(flujos_completos)
 
-        if vpn_low * vpn_high > 0:
-            # No hay raíz en este rango
-            tir = None
-        else:
-            for _ in range(200):
-                mid = (low + high) / 2
-                vpn_mid = calcular_vpn_para_tir(flujos_completos, mid)
-                if abs(vpn_mid) < 0.01:
-                    tir = mid
-                    break
-                if vpn_low * vpn_mid < 0:
-                    high = mid
-                else:
-                    low = mid
-                    vpn_low = vpn_mid
-            if tir is None:
-                tir = (low + high) / 2
-    except:
-        tir = None
+    tir = raices[0] if raices else None
 
-    # Tabla de flujos con VP a la TIR encontrada
+    tir_pct_preciso = tir * 100 if tir is not None else None
+    tir_pct = round(tir_pct_preciso, 2) if tir_pct_preciso is not None else None
+
+    # Evita que un caso de 9.999999% se muestre/rechace como 9.99% cuando la TREMA es 10%.
+    if tir_pct_preciso is not None and abs(tir_pct_preciso - trema) <= 0.01:
+        tir_pct = round(trema, 2)
+
+    # Tolerancia de 0.01 puntos porcentuales para no rechazar por redondeo.
+    tolerancia_pct = 0.01
+    acepta = tir_pct_preciso is not None and tir_pct_preciso >= trema - tolerancia_pct
+
     flujos_detalle = []
+
     for t, fc in enumerate(flujos_completos):
         flujos_detalle.append({
             'periodo': t,
-            'flujo': fc,
-            'factor_pf': round(factor_PF(tir, t), 6) if tir else 0,
-            'vp': round(fc * factor_PF(tir, t), 2) if tir else 0
+            'flujo': round(fc, 2),
+            'factor_pf': round(factor_PF(tir, t), 6) if tir is not None else 0,
+            'vp': round(fc * factor_PF(tir, t), 2) if tir is not None else 0
         })
 
-    mensaje_tir = None
-
-    tir_pct = round(tir * 100, 2) if tir is not None else None
-    acepta = tir_pct is not None and tir_pct >= datos['trema']
-
-    mensaje_tir = None
+    mensajes = []
 
     if tir is None:
-        mensaje_tir = (
-            'No se pudo determinar la TIR para estos flujos. '
-            'Puede no existir una raíz en el rango evaluado o los flujos no presentan un cambio de signo adecuado.'
+        mensajes.append(
+            'No se pudo determinar una TIR en el rango evaluado (-99.99% a 1000%). '
+            'Revise que los flujos tengan al menos un cambio de signo.'
+        )
+
+    if cambios_signo > 1:
+        mensajes.append(
+            'Advertencia: los flujos tienen más de un cambio de signo; pueden existir TIR múltiples. '
+            'Se muestra la primera raíz encontrada. Para estos casos conviene verificar con VPN o TER.'
+        )
+
+    if len(raices) > 1:
+        mensajes.append(
+            'TIR múltiples detectadas: ' +
+            ', '.join(f'{round(r * 100, 2)}%' for r in raices) +
+            '.'
         )
 
     return {
         'tir': tir_pct,
-        'trema': datos['trema'],
+        'tir_precisa': tir_pct_preciso,
+        'trema': trema,
         'flujos': flujos_detalle,
         'decision': 'ACEPTAR ✓' if acepta else 'RECHAZAR ✗',
         'color_decision': 'verde' if acepta else 'rojo',
         'sin_tir': tir is None,
-        'mensaje': mensaje_tir
+        'mensaje': ' '.join(mensajes) if mensajes else None,
+        'cambios_signo': cambios_signo,
+        'tirs_detectadas': [round(r * 100, 6) for r in raices]
     }
 
 # ─── GENERACIÓN DE PDF ───────────────────────────────────────────────────────
@@ -315,11 +474,11 @@ def generar_pdf(datos_reporte):
         val_a = f"{ta}%" if ta else "No determinada"
         val_b = f"{tb}%" if tb else "No determinada"
         label = "TIR"
-        if ta and tb:
+        if ta is not None and tb is not None:
             ganador = alt_a['nombre'] if ta >= tb else alt_b['nombre']
-        elif ta:
+        elif ta is not None:
             ganador = alt_a['nombre']
-        elif tb:
+        elif tb is not None:
             ganador = alt_b['nombre']
         else:
             ganador = "Ninguna"
@@ -531,6 +690,201 @@ def obtener_ganador(metodo, alt_a, alt_b, res_a, res_b):
     }
 
 # ─── RUTAS FLASK ─────────────────────────────────────────────────────────────
+def validar_alternativa(alt, nombre_alt):
+    errores = []
+
+    if not alt:
+        return [f"No se recibieron datos para {nombre_alt}."]
+
+    inversion = alt.get('inversion')
+    tasa = alt.get('tasa')
+    vida = alt.get('vida')
+    modo = alt.get('modo')
+
+    if inversion is None or inversion < 0:
+        errores.append(f"{nombre_alt}: la inversión inicial es obligatoria y no puede ser negativa.")
+
+    if tasa is None or tasa < 0:
+        errores.append(f"{nombre_alt}: la tasa/TREMA es obligatoria y no puede ser negativa.")
+
+    if vida is None or int(vida) <= 0:
+        errores.append(f"{nombre_alt}: la vida del proyecto debe ser mayor que cero.")
+
+    if modo not in ['uniforme', 'manual']:
+        errores.append(f"{nombre_alt}: el modo de flujos no es válido.")
+
+    if modo == 'manual':
+        flujos = alt.get('flujos', [])
+
+        if not isinstance(flujos, list) or len(flujos) == 0:
+            errores.append(f"{nombre_alt}: debe ingresar los flujos manuales.")
+        elif vida and len(flujos) != int(vida):
+            errores.append(
+                f"{nombre_alt}: la cantidad de flujos manuales debe coincidir con la vida del proyecto."
+            )
+
+    return errores
+
+
+def obtener_ganador(metodo, alt_a, alt_b, res_a, res_b):
+    """
+    Determina la alternativa recomendada.
+
+    Para ingresos/beneficios:
+        VPN mayor, CAE/VA mayor o TIR mayor entre aceptadas.
+
+    Para solo costos:
+        VPN menos negativo o CAE menos negativo.
+    """
+    nombre_a = alt_a.get('nombre', 'Alternativa A')
+    nombre_b = alt_b.get('nombre', 'Alternativa B')
+
+    tipo_a = res_a.get('tipo_analisis', detectar_tipo_analisis(alt_a))
+    tipo_b = res_b.get('tipo_analisis', detectar_tipo_analisis(alt_b))
+
+    analisis_costos = tipo_a == 'costos' and tipo_b == 'costos'
+
+    if metodo == 'VPN':
+        val_a = res_a['vpn']
+        val_b = res_b['vpn']
+
+        if analisis_costos:
+            ganador = nombre_a if val_a >= val_b else nombre_b
+
+            return {
+                'ganador': ganador,
+                'mensaje': 'Ejercicio de solo costos: se recomienda la alternativa con menor costo en valor presente.',
+                'val_a': val_a,
+                'val_b': val_b
+            }
+
+        aceptada_a = val_a >= 0
+        aceptada_b = val_b >= 0
+
+    elif metodo == 'CAE':
+        val_a = res_a['cae']
+        val_b = res_b['cae']
+
+        if analisis_costos:
+            ganador = nombre_a if val_a >= val_b else nombre_b
+
+            return {
+                'ganador': ganador,
+                'mensaje': 'Ejercicio de solo costos: se recomienda la alternativa con menor CAUE.',
+                'val_a': val_a,
+                'val_b': val_b
+            }
+
+        aceptada_a = val_a >= 0
+        aceptada_b = val_b >= 0
+
+    else:
+        val_a = res_a.get('tir')
+        val_b = res_b.get('tir')
+
+        val_precisa_a = res_a.get('tir_precisa')
+        val_precisa_b = res_b.get('tir_precisa')
+
+        trema_a = float(alt_a.get('trema', alt_a.get('tasa', 0)) or 0)
+        trema_b = float(alt_b.get('trema', alt_b.get('tasa', 0)) or 0)
+
+        tolerancia_pct = 0.01
+
+        aceptada_a = val_precisa_a is not None and val_precisa_a >= trema_a - tolerancia_pct
+        aceptada_b = val_precisa_b is not None and val_precisa_b >= trema_b - tolerancia_pct
+
+    if not aceptada_a and not aceptada_b:
+        return {
+            'ganador': 'Ninguna alternativa recomendable',
+            'mensaje': 'Ambas alternativas fueron rechazadas según el criterio del método seleccionado.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    if aceptada_a and not aceptada_b:
+        return {
+            'ganador': nombre_a,
+            'mensaje': f'Solo {nombre_a} cumple con el criterio de aceptación.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    if aceptada_b and not aceptada_a:
+        return {
+            'ganador': nombre_b,
+            'mensaje': f'Solo {nombre_b} cumple con el criterio de aceptación.',
+            'val_a': val_a,
+            'val_b': val_b
+        }
+
+    ganador = nombre_a if val_a >= val_b else nombre_b
+
+    return {
+        'ganador': ganador,
+        'mensaje': 'Ambas alternativas son aceptables; se recomienda la de mejor resultado económico.',
+        'val_a': val_a,
+        'val_b': val_b
+    }
+
+
+def periodo_comun_vpn(alt_a, alt_b):
+    """
+    Calcula el MCM de las vidas útiles para comparar VPN
+    cuando las alternativas tienen vidas diferentes.
+    """
+    vida_a = int(alt_a.get('vida', 0))
+    vida_b = int(alt_b.get('vida', 0))
+
+    if vida_a > 0 and vida_b > 0 and vida_a != vida_b:
+        return abs(vida_a * vida_b) // math.gcd(vida_a, vida_b)
+
+    return None
+
+def calcular_resultados(metodo, alt_a, alt_b):
+    """
+    Calcula los resultados de ambas alternativas.
+    Se usa en /calcular y en /reporte.
+    """
+    if metodo == 'VPN':
+        periodo_vpn = periodo_comun_vpn(alt_a, alt_b)
+        res_a = calcular_vpn(alt_a, periodo_vpn)
+        res_b = calcular_vpn(alt_b, periodo_vpn)
+
+    elif metodo == 'CAE':
+        res_a = calcular_cae(alt_a)
+        res_b = calcular_cae(alt_b)
+
+    elif metodo == 'TIR':
+        res_a = calcular_tir(alt_a)
+        res_b = calcular_tir(alt_b)
+
+    else:
+        raise ValueError('El método seleccionado no es válido.')
+
+    comparacion = obtener_ganador(metodo, alt_a, alt_b, res_a, res_b)
+
+    return res_a, res_b, comparacion
+
+
+def preparar_datos_reporte(metodo, alt_a, alt_b, res_a, res_b, comparacion):
+    """
+    Prepara los datos con la estructura que necesita generar_pdf().
+    """
+    return {
+        'metodo': metodo,
+        'ganador': comparacion.get('ganador'),
+        'alternativa_a': {
+            'nombre': alt_a.get('nombre', 'Alternativa A'),
+            'parametros': alt_a,
+            'resultado': res_a
+        },
+        'alternativa_b': {
+            'nombre': alt_b.get('nombre', 'Alternativa B'),
+            'parametros': alt_b,
+            'resultado': res_b
+        }
+    }
+
 
 @app.route('/')
 def index():
@@ -556,19 +910,12 @@ def calcular():
         errores.extend(validar_alternativa(alt_b, 'Alternativa B'))
 
         if errores:
-            return jsonify({'error': 'Datos inválidos.', 'detalles': errores}), 400
+            return jsonify({
+                'error': 'Datos inválidos.',
+                'detalles': errores
+            }), 400
 
-        if metodo == 'VPN':
-            res_a = calcular_vpn(alt_a)
-            res_b = calcular_vpn(alt_b)
-        elif metodo == 'CAE':
-            res_a = calcular_cae(alt_a)
-            res_b = calcular_cae(alt_b)
-        else:
-            res_a = calcular_tir(alt_a)
-            res_b = calcular_tir(alt_b)
-
-        comparacion = obtener_ganador(metodo, alt_a, alt_b, res_a, res_b)
+        res_a, res_b, comparacion = calcular_resultados(metodo, alt_a, alt_b)
 
         return jsonify({
             'resultado_a': res_a,
@@ -587,6 +934,9 @@ def calcular():
 
 @app.route('/reporte', methods=['POST'])
 def reporte():
+    """
+    Genera y descarga el reporte PDF.
+    """
     try:
         datos = request.get_json()
 
@@ -605,44 +955,36 @@ def reporte():
         errores.extend(validar_alternativa(alt_b, 'Alternativa B'))
 
         if errores:
-            return jsonify({'error': 'Datos inválidos.', 'detalles': errores}), 400
+            return jsonify({
+                'error': 'Datos inválidos.',
+                'detalles': errores
+            }), 400
 
-        if metodo == 'VPN':
-            res_a = calcular_vpn(alt_a)
-            res_b = calcular_vpn(alt_b)
-        elif metodo == 'CAE':
-            res_a = calcular_cae(alt_a)
-            res_b = calcular_cae(alt_b)
-        else:
-            res_a = calcular_tir(alt_a)
-            res_b = calcular_tir(alt_b)
+        res_a, res_b, comparacion = calcular_resultados(metodo, alt_a, alt_b)
 
-        datos_reporte = {
-            'metodo': metodo,
-            'alternativa_a': {
-                'nombre': alt_a.get('nombre', 'Alternativa A'),
-                'parametros': alt_a,
-                'resultado': res_a
-            },
-            'alternativa_b': {
-                'nombre': alt_b.get('nombre', 'Alternativa B'),
-                'parametros': alt_b,
-                'resultado': res_b
-            }
-        }
+        datos_reporte = preparar_datos_reporte(
+            metodo,
+            alt_a,
+            alt_b,
+            res_a,
+            res_b,
+            comparacion
+        )
 
-        buffer = generar_pdf(datos_reporte)
+        pdf = generar_pdf(datos_reporte)
+
+        nombre_archivo = f"SAE_Reporte_{metodo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
         return send_file(
-            buffer,
+            pdf,
+            mimetype='application/pdf',
             as_attachment=True,
-            download_name='SAE_Reporte.pdf',
-            mimetype='application/pdf'
+            download_name=nombre_archivo
         )
 
     except Exception as e:
         return jsonify({
-            'error': 'Ocurrió un error al generar el reporte.',
+            'error': 'Ocurrió un error interno al generar el reporte.',
             'detalles': str(e)
         }), 500
 

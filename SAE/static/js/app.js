@@ -263,136 +263,234 @@
                         }
 
                         function mostrarResultados(data, altA, altB) {
-                          const resDiv = document.getElementById("resultados");
-                          resDiv.style.display = "block";
-                          resDiv.classList.add("fade-up");
-                          resDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+  const resDiv = document.getElementById("resultados");
+  resDiv.style.display = "block";
+  resDiv.classList.add("fade-up");
+  resDiv.scrollIntoView({ behavior: "smooth", block: "start" });
 
-                          // Ganador
-                          document.getElementById("ganadorNombre").textContent = data.ganador;
-                          let subTexto = "";
-                          if (metodoActual === "VPN") {
-                            subTexto = `VPN = ${fmt(data.val_a)} vs ${fmt(data.val_b)} — Se elige el mayor VPN`;
-                          } else if (metodoActual === "CAE") {
-                            subTexto = `CAE = ${fmt(data.val_a)} vs ${fmt(data.val_b)} — Se elige el mayor VA`;
-                          } else {
-                            subTexto = `TIR = ${fmtPct(data.val_a)} vs ${fmtPct(data.val_b)} — TREMA = ${altA.tasa}%`;
-                          }
-                          document.getElementById('ganadorSub').textContent = data.mensaje || subTexto;
+  document.getElementById("ganadorNombre").textContent = data.ganador;
 
-                          // Tarjetas
-                          const esMejorA = data.ganador === altA.nombre;
-                          const esMejorB = data.ganador === altB.nombre;
+  let subTexto = "";
 
-                          renderResCard("A", altA, data.resultado_a, esMejorA);
-                          renderResCard("B", altB, data.resultado_b, esMejorB);
-                        }
+  if (metodoActual === "VPN") {
+    subTexto = `VPN = ${fmt(data.val_a)} vs ${fmt(data.val_b)} — En ingresos se elige el mayor VPN; en costos, el menor costo presente`;
+  } else if (metodoActual === "CAE") {
+    subTexto = `CAE/VA = ${fmt(data.val_a)} vs ${fmt(data.val_b)} — En ingresos se elige el mayor VA; en costos, el menor CAUE`;
+  } else {
+    subTexto = `TIR = ${fmtPct(data.val_a)} vs ${fmtPct(data.val_b)} — TREMA = ${altA.tasa}%`;
+  }
+
+  document.getElementById("ganadorSub").textContent = data.mensaje || subTexto;
+
+  const esMejorA = data.ganador === altA.nombre;
+  const esMejorB = data.ganador === altB.nombre;
+
+  renderResCard("A", altA, data.resultado_a, esMejorA);
+  renderResCard("B", altB, data.resultado_b, esMejorB);
+}
 
                         function renderResCard(letra, altDatos, res, esMejorAlternativa = false) {
-                          const header = document.getElementById(`resHeader${letra}`);
-                          const body = document.getElementById(`resBody${letra}`);
-                          header.textContent = altDatos.nombre || `Alternativa ${letra}`;
+  const header = document.getElementById(`resHeader${letra}`);
+  const body = document.getElementById(`resBody${letra}`);
 
-                          const esVerde = res.color_decision === "verde";
-                          let html = "";
+  header.textContent = altDatos.nombre || `Alternativa ${letra}`;
 
-                          const textoDecision = esMejorAlternativa
-                            ? `${res.decision} · MEJOR OPCIÓN`
-                            : res.decision;     
+  const esVerde = res.color_decision === "verde";
+  let html = "";
 
-                          if (metodoActual === "VPN") {
-                            html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.vpn)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
-                            if (res.flujos && res.flujos.length) {
-                              html += `<table class="tabla-flujos">
-                          <thead><tr><th>Período</th><th>Flujo Neto</th><th>Factor P/F</th><th>VP</th></tr></thead>
-                          <tbody>`;
-                              res.flujos.forEach((f) => {
-                                html += `<tr><td>${f.periodo}</td><td>${fmt(f.flujo)}</td><td>${f.factor_pf}</td><td>${fmt(f.vp)}</td></tr>`;
-                              });
-                              html += `</tbody></table>`;
-                              html += `<div style="text-align:right;font-weight:700;font-size:14px;margin-top:8px;color:var(--ues-rojo)">VPN Total: ${fmt(res.vpn)}</div>`;
-                            }
-                          } else if (metodoActual === "CAE") {
-                            html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.cae)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
-                            html += `<div class="detalle-row"><span class="label">Factor A/P</span><span class="valor">${res.ap}</span></div>`;
-                            html += `<div class="detalle-row"><span class="label">Factor A/F</span><span class="valor">${res.af}</span></div>`;
-                            html += `<div class="detalle-row"><span class="label">Recuperación de Capital (RC)</span><span class="valor">${fmt(res.rc)}</span></div>`;
-                            html += `<div class="detalle-row"><span class="label">CAE / VA(i%)</span><span class="valor" style="color:var(--ues-rojo)">${fmt(res.cae)}</span></div>`;
-                          } else {
-                            // TIR
-                            html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmtPct(res.tir)}</div>`;
-                            html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
-                            html += `<div class="detalle-row"><span class="label">TIR Calculada</span><span class="valor">${fmtPct(res.tir)}</span></div>`;
-                            html += `<div class="detalle-row"><span class="label">TREMA</span><span class="valor">${res.trema}%</span></div>`;
-                            if (res.mensaje) {
-              html += `<div style="margin-top:10px;font-size:13px;color:var(--ues-rojo);font-weight:600;">${res.mensaje}</div>`;
-            }
-                            if (res.tir !== null) {
-                              const dif = (res.tir - res.trema).toFixed(2);
-                              html += `<div class="detalle-row"><span class="label">TIR - TREMA</span><span class="valor" style="color:${dif >= 0 ? "var(--verde)" : "var(--ues-rojo)"}">${dif >= 0 ? "+" : ""}${dif}%</span></div>`;
-                            }
-                            if (res.flujos && res.flujos.length) {
-                              html += `<table class="tabla-flujos" style="margin-top:10px">
-                          <thead><tr><th>Período</th><th>Flujo Neto</th><th>Factor P/F@TIR</th><th>VP</th></tr></thead>
-                          <tbody>`;
-                              res.flujos.forEach((f) => {
-                                html += `<tr><td>${f.periodo}</td><td>${fmt(f.flujo)}</td><td>${f.factor_pf}</td><td>${fmt(f.vp)}</td></tr>`;
-                              });
-                              html += `</tbody></table>`;
-                            }
-                          }
+  const textoDecision = esMejorAlternativa
+    ? `${res.decision} · MEJOR OPCIÓN`
+    : res.decision;
 
-                          body.innerHTML = html;
-                        }
+  const tipoAnalisis =
+    res.tipo_analisis === "costos" ? "Solo costos" : "Ingresos / beneficios";
+
+  if (res.criterio) {
+    html += `<div class="detalle-row"><span class="label">Tipo de análisis</span><span class="valor">${tipoAnalisis}</span></div>`;
+    html += `<div style="margin:8px 0 10px;font-size:13px;color:var(--ues-gris-medio);font-weight:600;">${res.criterio}</div>`;
+  }
+
+  if (metodoActual === "VPN") {
+    html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.vpn)}</div>`;
+    html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
+
+    if (res.periodo_comparacion) {
+      html += `<div class="detalle-row"><span class="label">Período evaluado</span><span class="valor">${res.periodo_comparacion} años</span></div>`;
+    }
+
+    if (res.tipo_analisis === "costos") {
+      html += `<div class="detalle-row"><span class="label">Costo presente equivalente</span><span class="valor">${fmt(res.costo_presente)}</span></div>`;
+    }
+
+    if (res.flujos && res.flujos.length) {
+      html += `<table class="tabla-flujos">
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Flujo Neto</th>
+            <th>Factor P/F</th>
+            <th>VP</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      res.flujos.forEach((f) => {
+        html += `<tr>
+          <td>${f.periodo}</td>
+          <td>${fmt(f.flujo)}</td>
+          <td>${f.factor_pf}</td>
+          <td>${fmt(f.vp)}</td>
+        </tr>`;
+      });
+
+      html += `</tbody></table>`;
+      html += `<div style="text-align:right;font-weight:700;font-size:14px;margin-top:8px;color:var(--ues-rojo)">VPN Total: ${fmt(res.vpn)}</div>`;
+    }
+
+  } else if (metodoActual === "CAE") {
+    html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmt(res.cae)}</div>`;
+    html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
+    html += `<div class="detalle-row"><span class="label">Factor A/P</span><span class="valor">${res.ap}</span></div>`;
+    html += `<div class="detalle-row"><span class="label">Factor A/F</span><span class="valor">${res.af}</span></div>`;
+    html += `<div class="detalle-row"><span class="label">Recuperación de Capital (RC)</span><span class="valor">${fmt(res.rc)}</span></div>`;
+    html += `<div class="detalle-row"><span class="label">CAE / VA(i%)</span><span class="valor" style="color:var(--ues-rojo)">${fmt(res.cae)}</span></div>`;
+
+    if (res.tipo_analisis === "costos") {
+      html += `<div class="detalle-row"><span class="label">CAUE como costo positivo</span><span class="valor">${fmt(res.caue_costo)}</span></div>`;
+    }
+
+  } else {
+    html += `<div class="valor-principal" style="color:${esVerde ? "var(--verde)" : "var(--ues-rojo)"}">${fmtPct(res.tir)}</div>`;
+    html += `<span class="decision-badge ${res.color_decision}">${textoDecision}</span>`;
+    html += `<div class="detalle-row"><span class="label">TIR Calculada</span><span class="valor">${fmtPct(res.tir)}</span></div>`;
+    html += `<div class="detalle-row"><span class="label">TREMA</span><span class="valor">${res.trema}%</span></div>`;
+
+    if (res.mensaje) {
+      html += `<div style="margin-top:10px;font-size:13px;color:var(--ues-rojo);font-weight:600;">${res.mensaje}</div>`;
+    }
+
+    if (res.tir !== null) {
+      const dif = (res.tir - res.trema).toFixed(2);
+
+      html += `<div class="detalle-row">
+        <span class="label">TIR - TREMA</span>
+        <span class="valor" style="color:${dif >= 0 ? "var(--verde)" : "var(--ues-rojo)"}">${dif >= 0 ? "+" : ""}${dif}%</span>
+      </div>`;
+    }
+
+    if (res.flujos && res.flujos.length) {
+      html += `<table class="tabla-flujos" style="margin-top:10px">
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Flujo Neto</th>
+            <th>Factor P/F@TIR</th>
+            <th>VP</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      res.flujos.forEach((f) => {
+        html += `<tr>
+          <td>${f.periodo}</td>
+          <td>${fmt(f.flujo)}</td>
+          <td>${f.factor_pf}</td>
+          <td>${fmt(f.vp)}</td>
+        </tr>`;
+      });
+
+      html += `</tbody></table>`;
+    }
+  }
+
+  body.innerHTML = html;
+}
 
                         // ── GENERAR PDF ───────────────────────────────────────────────────────────────
                         async function generarPDF() {
-                          if (!ultimosResultados) return;
-                          const btn = document.getElementById("btnPdf");
-                          btn.textContent = "⏳ Generando PDF...";
-                          btn.disabled = true;
+  if (!ultimosResultados) {
+    alert("Primero debe calcular las alternativas antes de generar el PDF.");
+    return;
+  }
 
-                          let altA;
-                          let altB;
+  const btn = document.getElementById("btnPdf");
+  btn.textContent = "⏳ Generando PDF...";
+  btn.disabled = true;
 
-                          try {
-                            altA = recopilarDatosAlt("a");
-                            altB = recopilarDatosAlt("b");
-                          } catch (e) {
-                            alert(e.message);
-                            btn.innerHTML = "⚙️ &nbsp;Calcular y Comparar";
-                            btn.disabled = false;
-                            return;
-                          }
+  let altA;
+  let altB;
 
-                          const payload = {
-                            metodo: metodoActual,
-                            alternativa_a: altA,
-                            alternativa_b: altB,
-                          };
+  try {
+    altA = recopilarDatosAlt("a");
+    altB = recopilarDatosAlt("b");
+  } catch (e) {
+    alert(e.message);
+    btn.innerHTML = "📄 Exportar Reporte PDF";
+    btn.disabled = false;
+    return;
+  }
 
-                          try {
-                            const resp = await fetch("/reporte", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify(payload),
-                            });
-                            const blob = await resp.blob();
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = `SAE_Reporte_${metodoActual}.pdf`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                          } catch (e) {
-                            alert("Error generando PDF: " + e.message);
-                          } finally {
-                            btn.innerHTML = "📄 Exportar Reporte PDF";
-                            btn.disabled = false;
-                          }
-                        }
+  const payload = {
+    metodo: metodoActual,
+    alternativa_a: altA,
+    alternativa_b: altB,
+  };
+
+  try {
+    const resp = await fetch("/reporte", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      let mensaje = "Error generando PDF.";
+
+      try {
+        const data = await resp.json();
+
+        if (data.error) {
+          mensaje = data.error;
+        }
+
+        if (data.detalles) {
+          if (Array.isArray(data.detalles)) {
+            mensaje += "\n\n" + data.detalles.join("\n");
+          } else {
+            mensaje += "\n\n" + data.detalles;
+          }
+        }
+      } catch (_) {
+        mensaje = "Error generando PDF. El servidor no devolvió un PDF válido.";
+      }
+
+      throw new Error(mensaje);
+    }
+
+    const blob = await resp.blob();
+
+    if (blob.type !== "application/pdf") {
+      throw new Error("El servidor no devolvió un archivo PDF válido.");
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = `SAE_Reporte_${metodoActual}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.innerHTML = "📄 Exportar Reporte PDF";
+    btn.disabled = false;
+  }
+}
 
                         function cargarEjemplo() {
         document.getElementById('nombre_a').value = 'Máquina A';
