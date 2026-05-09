@@ -9,6 +9,13 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 import json
 from datetime import datetime
+import tempfile
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from reportlab.platypus import Image
 
 app = Flask(
     __name__,
@@ -397,190 +404,465 @@ def calcular_tir(datos):
 
 # ─── GENERACIÓN DE PDF ───────────────────────────────────────────────────────
 
-UES_ROJO = colors.HexColor('#8B1A1A')
-UES_GRIS = colors.HexColor('#2C2C2C')
-UES_CLARO = colors.HexColor('#F5F0F0')
-VERDE = colors.HexColor('#1A6B1A')
-ROJO_DEC = colors.HexColor('#8B1A1A')
+AZUL_OSCURO = colors.HexColor('#071F4D')
+AZUL_MEDIO = colors.HexColor('#123C7C')
+AZUL_CLARO = colors.HexColor('#EAF1FB')
+AZUL_TABLA = colors.HexColor('#D7E4F5')
+GRIS_TEXTO = colors.HexColor('#263238')
+GRIS_LINEA = colors.HexColor('#B0BEC5')
+VERDE = colors.HexColor('#0B7A3B')
+ROJO_DEC = colors.HexColor('#B3261E')
+BLANCO = colors.white
+
+def crear_formula_imagen(formula_latex, ancho=6.2, alto=0.55, fontsize=16):
+    """
+    Crea una imagen PNG temporal a partir de una fórmula LaTeX.
+    Sirve para insertar fórmulas matemáticas bien formateadas en el PDF.
+    """
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+    tmp.close()
+
+    fig = plt.figure(figsize=(ancho, alto))
+    fig.patch.set_facecolor('white')
+
+    plt.text(
+        0.5,
+        0.5,
+        formula_latex,
+        fontsize=fontsize,
+        ha='center',
+        va='center'
+    )
+
+    plt.axis('off')
+    plt.savefig(
+        tmp.name,
+        dpi=220,
+        bbox_inches='tight',
+        pad_inches=0.12,
+        transparent=False
+    )
+    plt.close(fig)
+
+    return tmp.name
+
+def agregar_formula_pdf(story, titulo, formulas_latex, estilos):
+    """
+    Agrega una caja azul con una o varias fórmulas renderizadas como imagen.
+    """
+    story.append(Paragraph(titulo, estilos['formula_titulo']))
+
+    elementos_formula = []
+
+    archivos_temporales = []
+
+    for formula in formulas_latex:
+        ruta_img = crear_formula_imagen(formula)
+        archivos_temporales.append(ruta_img)
+
+        img = Image(ruta_img)
+        img.hAlign = 'CENTER'
+        img.drawHeight = 0.45 * inch
+        img.drawWidth = 5.8 * inch
+
+        elementos_formula.append([img])
+
+    tabla = Table(
+        elementos_formula,
+        colWidths=[6.5 * inch]
+    )
+
+    tabla.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F3F7FD')),
+        ('BOX', (0, 0), (-1, -1), 0.7, AZUL_MEDIO),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    story.append(tabla)
+    story.append(Spacer(1, 8))
+
+    return archivos_temporales
 
 def generar_pdf(datos_reporte):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                            topMargin=0.75*inch, bottomMargin=0.75*inch,
-                            leftMargin=0.75*inch, rightMargin=0.75*inch)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        topMargin=0.65 * inch,
+        bottomMargin=0.65 * inch,
+        leftMargin=0.70 * inch,
+        rightMargin=0.70 * inch
+    )
 
     styles = getSampleStyleSheet()
+
     estilos = {
-        'titulo': ParagraphStyle('titulo', fontSize=18, textColor=UES_ROJO,
-                                  spaceAfter=4, fontName='Helvetica-Bold', alignment=TA_CENTER),
-        'subtitulo': ParagraphStyle('subtitulo', fontSize=11, textColor=UES_GRIS,
-                                     spaceAfter=8, fontName='Helvetica', alignment=TA_CENTER),
-        'seccion': ParagraphStyle('seccion', fontSize=13, textColor=UES_ROJO,
-                                   spaceBefore=12, spaceAfter=6, fontName='Helvetica-Bold'),
-        'normal': ParagraphStyle('normal', fontSize=10, textColor=UES_GRIS,
-                                  spaceAfter=4, fontName='Helvetica'),
-        'formula': ParagraphStyle('formula', fontSize=10, textColor=UES_GRIS,
-                                   spaceAfter=4, fontName='Helvetica-Oblique',
-                                   leftIndent=20),
-        'decision_verde': ParagraphStyle('dec_v', fontSize=14, textColor=VERDE,
-                                          fontName='Helvetica-Bold', alignment=TA_CENTER,
-                                          spaceBefore=8, spaceAfter=8),
-        'decision_rojo': ParagraphStyle('dec_r', fontSize=14, textColor=ROJO_DEC,
-                                         fontName='Helvetica-Bold', alignment=TA_CENTER,
-                                         spaceBefore=8, spaceAfter=8),
+        'titulo': ParagraphStyle(
+            'titulo',
+            fontSize=18,
+            leading=22,
+            textColor=AZUL_OSCURO,
+            spaceAfter=3,
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER
+        ),
+        'subtitulo': ParagraphStyle(
+            'subtitulo',
+            fontSize=10,
+            leading=13,
+            textColor=GRIS_TEXTO,
+            spaceAfter=5,
+            fontName='Helvetica',
+            alignment=TA_CENTER
+        ),
+        'titulo_reporte': ParagraphStyle(
+            'titulo_reporte',
+            fontSize=15,
+            leading=18,
+            textColor=AZUL_OSCURO,
+            spaceBefore=12,
+            spaceAfter=8,
+            fontName='Helvetica-Bold'
+        ),
+        'seccion': ParagraphStyle(
+            'seccion',
+            fontSize=12.5,
+            leading=16,
+            textColor=AZUL_OSCURO,
+            spaceBefore=13,
+            spaceAfter=7,
+            fontName='Helvetica-Bold'
+        ),
+        'normal': ParagraphStyle(
+            'normal',
+            fontSize=9.5,
+            leading=13,
+            textColor=GRIS_TEXTO,
+            spaceAfter=4,
+            fontName='Helvetica'
+        ),
+        'normal_bold': ParagraphStyle(
+            'normal_bold',
+            fontSize=9.5,
+            leading=13,
+            textColor=GRIS_TEXTO,
+            spaceAfter=4,
+            fontName='Helvetica-Bold'
+        ),
+        'formula_titulo': ParagraphStyle(
+            'formula_titulo',
+            fontSize=9.5,
+            leading=12,
+            textColor=AZUL_OSCURO,
+            spaceAfter=4,
+            fontName='Helvetica-Bold'
+        ),
+        'formula': ParagraphStyle(
+            'formula',
+            fontSize=10.5,
+            leading=15,
+            textColor=AZUL_OSCURO,
+            fontName='Helvetica',
+            alignment=TA_CENTER
+        ),
+        'decision_verde': ParagraphStyle(
+            'decision_verde',
+            fontSize=13,
+            leading=16,
+            textColor=VERDE,
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceBefore=8,
+            spaceAfter=8
+        ),
+        'decision_rojo': ParagraphStyle(
+            'decision_rojo',
+            fontSize=13,
+            leading=16,
+            textColor=ROJO_DEC,
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceBefore=8,
+            spaceAfter=8
+        ),
+        'pie': ParagraphStyle(
+            'pie',
+            fontSize=8,
+            textColor=GRIS_TEXTO,
+            alignment=TA_CENTER,
+            fontName='Helvetica'
+        )
     }
 
     story = []
+
     metodo = datos_reporte['metodo']
     alt_a = datos_reporte['alternativa_a']
     alt_b = datos_reporte['alternativa_b']
+    ganador_reporte = datos_reporte.get('ganador')
+
+    def dinero(valor):
+        try:
+            return f"${float(valor):,.2f}"
+        except Exception:
+            return "$0.00"
+
+    def porcentaje(valor):
+        try:
+            return f"{float(valor):,.2f}%"
+        except Exception:
+            return "0.00%"
+
+    def texto_tir(valor):
+        if valor is None:
+            return "No determinada"
+        return porcentaje(valor)
+
+    def estilo_tabla(header_color=AZUL_OSCURO):
+        return TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), header_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), BLANCO),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8.5),
+            ('TEXTCOLOR', (0, 1), (-1, -1), GRIS_TEXTO),
+            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, AZUL_CLARO]),
+            ('GRID', (0, 0), (-1, -1), 0.35, GRIS_LINEA),
+
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ])
+
+    def caja_formula(titulo, formulas):
+        agregar_formula_pdf(story, titulo, formulas, estilos)
+
+    def valor_resultado(alt):
+        res = alt['resultado']
+
+        if metodo == 'VPN':
+            return dinero(res.get('vpn', 0))
+
+        if metodo == 'CAE':
+            return dinero(res.get('cae', 0))
+
+        tir = res.get('tir')
+        return texto_tir(tir)
+
+    def obtener_ganador_pdf():
+        if ganador_reporte:
+            return ganador_reporte
+
+        if metodo == 'VPN':
+            return alt_a['nombre'] if alt_a['resultado']['vpn'] >= alt_b['resultado']['vpn'] else alt_b['nombre']
+
+        if metodo == 'CAE':
+            return alt_a['nombre'] if alt_a['resultado']['cae'] >= alt_b['resultado']['cae'] else alt_b['nombre']
+
+        ta = alt_a['resultado'].get('tir')
+        tb = alt_b['resultado'].get('tir')
+
+        if ta is not None and tb is not None:
+            return alt_a['nombre'] if ta >= tb else alt_b['nombre']
+        if ta is not None:
+            return alt_a['nombre']
+        if tb is not None:
+            return alt_b['nombre']
+
+        return "Ninguna alternativa recomendable"
+
+    def agregar_tabla_flujos(res):
+        if not res.get('flujos'):
+            return
+
+        encabezado = ['Período', 'Flujo Neto ($)', 'Factor P/F', 'VP ($)']
+        filas = []
+
+        for f in res['flujos']:
+            filas.append([
+                str(f.get('periodo', '')),
+                dinero(f.get('flujo', 0)),
+                f"{float(f.get('factor_pf', 0)):,.6f}",
+                dinero(f.get('vp', 0))
+            ])
+
+        tabla_f = Table(
+            [encabezado] + filas,
+            colWidths=[0.95 * inch, 1.95 * inch, 1.45 * inch, 1.65 * inch]
+        )
+        tabla_f.setStyle(estilo_tabla(AZUL_MEDIO))
+        story.append(tabla_f)
+        story.append(Spacer(1, 8))
+
+    def agregar_parametros(alt):
+        params = alt['parametros']
+
+        filas = [
+            ['Parámetro', 'Valor'],
+            ['Inversión inicial', dinero(params.get('inversion', 0))],
+            ['Tasa de descuento / TREMA', porcentaje(params.get('tasa', 0))],
+            ['Vida del proyecto', f"{params.get('vida', 0)} años"],
+            ['Valor de salvamento', dinero(params.get('salvamento', 0))]
+        ]
+
+        if params.get('modo') == 'manual':
+            filas.append(['Modo de flujos', 'Ingreso manual'])
+        else:
+            filas.append(['Modo de flujos', 'El sistema calcula'])
+            filas.append(['Ingresos anuales', dinero(params.get('ingresos', 0))])
+            filas.append(['Egresos anuales', dinero(params.get('egresos', 0))])
+
+        tabla = Table(filas, colWidths=[2.5 * inch, 3.5 * inch])
+        tabla.setStyle(estilo_tabla(AZUL_MEDIO))
+        story.append(tabla)
+        story.append(Spacer(1, 8))
+
+    def formulas_por_metodo():
+        if metodo == 'VPN':
+            return [
+                r"$VPN = -P_0 + \sum_{t=1}^{n} FC_t(P/F,i,t)$",
+                r"$(P/F,i,t)=\frac{1}{(1+i)^t}$",
+                r"$VPN = -P_0 + \sum_{t=1}^{n}\frac{FC_t}{(1+i)^t}$"
+            ]
+
+        if metodo == 'CAE':
+            return [
+                r"$RC(i)=I(A/P,i,N)-S(A/F,i,N)$",
+                r"$VA(i)=R-E-RC(i)$",
+                r"$VA=VP(A/P,i,N)$"
+            ]
+
+        return [
+            r"$VP=\sum_{k=0}^{N}R_k(P/F,i',k)-\sum_{k=0}^{N}E_k(P/F,i',k)=0$",
+            r"$TIR=i'\quad cuando\quad VP=0$",
+            r"$Si\ TIR\geq TREMA,\ se\ acepta;\quad si\ TIR<TREMA,\ se\ rechaza$"
+        ]
+
+    def formula_resultado_alt(alt):
+        res = alt['resultado']
+
+        if metodo == 'VPN':
+            vpn = res.get('vpn', 0)
+            return [
+                rf"$VPN = {vpn:,.2f}$"
+            ]
+
+        if metodo == 'CAE':
+            rc = res.get('rc', res.get('recuperacion_capital', 0))
+            cae = res.get('cae', 0)
+
+            return [
+                rf"$RC = {rc:,.2f}$",
+                rf"$CAE = {cae:,.2f}$"
+            ]
+
+        tir = res.get('tir')
+        trema = res.get('trema', 0)
+
+        if tir is None:
+            return [
+                rf"$TREMA = {trema:,.2f}\%$",
+                r"$TIR\ no\ determinada$"
+            ]
+
+        return [
+            rf"$TREMA = {trema:,.2f}\%$",
+            rf"$TIR = {tir:,.2f}\%$"
+        ]
+
+    ganador = obtener_ganador_pdf()
 
     # ── Encabezado ──
     story.append(Paragraph("Universidad de El Salvador", estilos['titulo']))
     story.append(Paragraph("Facultad Multidisciplinaria de Occidente", estilos['subtitulo']))
     story.append(Paragraph("Ingeniería en Desarrollo de Software", estilos['subtitulo']))
-    story.append(HRFlowable(width="100%", thickness=2, color=UES_ROJO))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(f"Sistema de Análisis Económico — SAE", estilos['seccion']))
-    story.append(Paragraph(f"Método: {metodo}", estilos['normal']))
-    story.append(Paragraph(f"Asignatura: Ingeniería de Negocios — INE135", estilos['normal']))
-    story.append(Paragraph(f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}", estilos['normal']))
-    story.append(HRFlowable(width="100%", thickness=1, color=UES_GRIS))
+
+    story.append(HRFlowable(width="100%", thickness=2.2, color=AZUL_OSCURO))
     story.append(Spacer(1, 10))
 
-    # ── Resumen comparativo ──
-    story.append(Paragraph("Resumen Comparativo de Alternativas", estilos['seccion']))
+    story.append(Paragraph("Sistema de Análisis Económico — SAE", estilos['titulo_reporte']))
+    story.append(Paragraph(f"<b>Método:</b> {metodo}", estilos['normal']))
+    story.append(Paragraph("<b>Asignatura:</b> Ingeniería de Negocios — INE135", estilos['normal']))
+    story.append(Paragraph(f"<b>Fecha de generación:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", estilos['normal']))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=GRIS_LINEA))
+    story.append(Spacer(1, 12))
+
+    # ── Resumen ──
+    story.append(Paragraph("Resumen comparativo de alternativas", estilos['seccion']))
 
     if metodo == 'VPN':
-        val_a = f"${alt_a['resultado']['vpn']:,.2f}"
-        val_b = f"${alt_b['resultado']['vpn']:,.2f}"
-        label = "VPN"
-        # Ganador: mayor VPN
-        if alt_a['resultado']['vpn'] >= alt_b['resultado']['vpn']:
-            ganador = alt_a['nombre']
-        else:
-            ganador = alt_b['nombre']
+        etiqueta = "VPN"
     elif metodo == 'CAE':
-        val_a = f"${alt_a['resultado']['cae']:,.2f}"
-        val_b = f"${alt_b['resultado']['cae']:,.2f}"
-        label = "CAE (VA)"
-        if alt_a['resultado']['cae'] >= alt_b['resultado']['cae']:
-            ganador = alt_a['nombre']
-        else:
-            ganador = alt_b['nombre']
-    else:  # TIR
-        ta = alt_a['resultado']['tir']
-        tb = alt_b['resultado']['tir']
-        val_a = f"{ta}%" if ta else "No determinada"
-        val_b = f"{tb}%" if tb else "No determinada"
-        label = "TIR"
-        if ta is not None and tb is not None:
-            ganador = alt_a['nombre'] if ta >= tb else alt_b['nombre']
-        elif ta is not None:
-            ganador = alt_a['nombre']
-        elif tb is not None:
-            ganador = alt_b['nombre']
-        else:
-            ganador = "Ninguna"
+        etiqueta = "CAE / VA"
+    else:
+        etiqueta = "TIR"
 
     tabla_res = Table([
-        ['Alternativa', label, 'Decisión'],
-        [alt_a['nombre'], val_a, alt_a['resultado']['decision']],
-        [alt_b['nombre'], val_b, alt_b['resultado']['decision']],
-    ], colWidths=[2.5*inch, 2*inch, 2.5*inch])
+        ['Alternativa', etiqueta, 'Decisión'],
+        [alt_a['nombre'], valor_resultado(alt_a), alt_a['resultado'].get('decision', 'N/D')],
+        [alt_b['nombre'], valor_resultado(alt_b), alt_b['resultado'].get('decision', 'N/D')],
+    ], colWidths=[2.45 * inch, 2.05 * inch, 2.35 * inch])
 
-    tabla_res.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), UES_ROJO),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 10),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [UES_CLARO, colors.white]),
-        ('GRID', (0,0), (-1,-1), 0.5, UES_GRIS),
-        ('PADDING', (0,0), (-1,-1), 8),
-    ]))
+    tabla_res.setStyle(estilo_tabla(AZUL_OSCURO))
     story.append(tabla_res)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 8))
+
     if ganador == "Ninguna" or ganador == "Ninguna alternativa recomendable":
         story.append(Paragraph("Conclusión: Ninguna alternativa es recomendable según el método seleccionado.", estilos['decision_rojo']))
     else:
-        story.append(Paragraph(f"✔ Alternativa Recomendada: {ganador}", estilos['decision_verde']))
-    story.append(HRFlowable(width="100%", thickness=1, color=UES_GRIS))
+        story.append(Paragraph(f"✓ Alternativa recomendada: {ganador}", estilos['decision_verde']))
+
+    story.append(HRFlowable(width="100%", thickness=0.8, color=GRIS_LINEA))
+    story.append(Spacer(1, 8))
+
+    # ── Fórmulas generales ──
+    story.append(Paragraph("Fórmulas y criterio utilizado", estilos['seccion']))
+    caja_formula(f"Fórmulas principales del método {metodo}", formulas_por_metodo())
 
     # ── Detalle por alternativa ──
     for alt in [alt_a, alt_b]:
-        story.append(Spacer(1, 10))
-        story.append(Paragraph(f"Detalle: {alt['nombre']}", estilos['seccion']))
-
         params = alt['parametros']
-        story.append(Paragraph(f"• Inversión inicial: ${params.get('inversion', 0):,.2f}", estilos['normal']))
-        story.append(Paragraph(f"• Tasa de descuento (TREMA): {params.get('tasa', 0)}%", estilos['normal']))
-        story.append(Paragraph(f"• Vida del proyecto: {params.get('vida', 0)} años", estilos['normal']))
-
-        if params.get('salvamento'):
-            story.append(Paragraph(f"• Valor de salvamento: ${params.get('salvamento', 0):,.2f}", estilos['normal']))
-        if params.get('ingresos'):
-            story.append(Paragraph(f"• Ingresos anuales: ${params.get('ingresos', 0):,.2f}", estilos['normal']))
-        if params.get('egresos'):
-            story.append(Paragraph(f"• Egresos anuales: ${params.get('egresos', 0):,.2f}", estilos['normal']))
-
         res = alt['resultado']
 
+        story.append(Paragraph(f"Detalle de alternativa: {alt['nombre']}", estilos['seccion']))
+
+        story.append(Paragraph("Datos ingresados", estilos['normal_bold']))
+        agregar_parametros(alt)
+
+        story.append(Paragraph("Cálculo aplicado", estilos['normal_bold']))
+        caja_formula("Resultado calculado", formula_resultado_alt(alt))
+
         if metodo == 'VPN':
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("Fórmula aplicada:", estilos['normal']))
-            story.append(Paragraph("VPN = -P₀ + Σ FC_t × (P/F, i%, t)", estilos['formula']))
-            story.append(Paragraph(f"VPN = ${res['vpn']:,.2f}", estilos['normal']))
+            story.append(Paragraph("Flujos descontados a valor presente", estilos['normal_bold']))
+            agregar_tabla_flujos(res)
 
-            # Tabla de flujos
-            if res.get('flujos'):
-                encabezado = ['Período', 'Flujo Neto ($)', 'Factor P/F', 'VP ($)']
-                filas = [[f['periodo'], f"${f['flujo']:,.2f}", f['factor_pf'], f"${f['vp']:,.2f}"]
-                         for f in res['flujos']]
-                tabla_f = Table([encabezado] + filas,
-                                colWidths=[1*inch, 2*inch, 1.5*inch, 1.5*inch])
-                tabla_f.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), UES_GRIS),
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0,0), (-1,-1), 9),
-                    ('ALIGN', (1,0), (-1,-1), 'CENTER'),
-                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [UES_CLARO, colors.white]),
-                    ('GRID', (0,0), (-1,-1), 0.4, colors.grey),
-                    ('PADDING', (0,0), (-1,-1), 5),
-                ]))
-                story.append(tabla_f)
+        elif metodo == 'TIR':
+            story.append(Paragraph("Flujos usados para encontrar la tasa interna", estilos['normal_bold']))
+            agregar_tabla_flujos(res)
 
-        elif metodo == 'CAE':
-            story.append(Paragraph("Fórmulas aplicadas:", estilos['normal']))
-            story.append(Paragraph("RC(i%) = I×(A/P,i%,N) - S×(A/F,i%,N)", estilos['formula']))
-            story.append(Paragraph("VA(i%) = R - E - RC(i%)", estilos['formula']))
-            story.append(Paragraph(f"Factor A/P = {res['ap']}", estilos['normal']))
-            story.append(Paragraph(f"Factor A/F = {res['af']}", estilos['normal']))
-            story.append(Paragraph(f"Recuperación de Capital (RC) = ${res['rc']:,.2f}", estilos['normal']))
-            story.append(Paragraph(f"CAE (VA) = ${res['cae']:,.2f}", estilos['normal']))
+        estilo_dec = estilos['decision_verde'] if 'ACEPTAR' in res.get('decision', '') else estilos['decision_rojo']
+        story.append(Paragraph(f"Decisión: {res.get('decision', 'N/D')}", estilo_dec))
+        story.append(HRFlowable(width="100%", thickness=0.6, color=GRIS_LINEA))
+        story.append(Spacer(1, 8))
 
-        else:  # TIR
-            story.append(Paragraph("Fórmula aplicada:", estilos['normal']))
-            story.append(Paragraph("VPN = 0 = -P₀ + Σ FC_t/(1+TIR)^t", estilos['formula']))
-            story.append(Paragraph(f"TREMA de referencia: {res['trema']}%", estilos['normal']))
-            if res.get('tir'):
-                story.append(Paragraph(f"TIR calculada = {res['tir']}%", estilos['normal']))
-            else:
-                story.append(Paragraph("TIR: No determinada para estos flujos", estilos['normal']))
-
-        # Decisión
-        estilo_dec = estilos['decision_verde'] if 'ACEPTAR' in res['decision'] else estilos['decision_rojo']
-        story.append(Paragraph(f"Decisión: {res['decision']}", estilo_dec))
-        story.append(HRFlowable(width="100%", thickness=0.5, color=UES_GRIS))
-
-    # ── Pie de página ──
-    story.append(Spacer(1, 20))
-    story.append(HRFlowable(width="100%", thickness=1, color=UES_ROJO))
-    story.append(Paragraph("SAE — Sistema de Análisis Económico | INE135 Ingeniería de Negocios | UES",
-                            ParagraphStyle('pie', fontSize=8, textColor=UES_GRIS,
-                                           alignment=TA_CENTER, fontName='Helvetica')))
+    # ── Cierre ──
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=1.2, color=AZUL_OSCURO))
+    story.append(Paragraph(
+        "SAE — Sistema de Análisis Económico | INE135 Ingeniería de Negocios | Universidad de El Salvador",
+        estilos['pie']
+    ))
 
     doc.build(story)
     buffer.seek(0)
